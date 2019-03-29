@@ -1,0 +1,282 @@
+------------------------------------------------
+CONFIGURATION REDMINE + PUMA + MYSQL + APACHE
+-------------------------------------------------
+
+Refer: rosehosting.com		vultr.com 	
+ebook: Mastering Redmine
+
+"httpd installation:"
+
+yum install httpd
+systemctl start httpd
+telnet localhost 80
+
+* Mysql installation: *
+
+yum install mariadb-server mariadb
+systemctl start mariadb
+mysql_secure_installation 
+systemctl enable mariadb
+mysql -u root -pchangeme
+create database redmine character set utf8;
+grant all privileges on redmine.* to 'redmine'@'localhost' identified by 'changeme';
+flush privileges;
+
+
+yum -y install zlib-devel curl-devel openssl-devel httpd-devel apr-devel apr-util-devel mysql-devel ftp wget ImageMagick-devel gcc-c++ patch readline readline-devel zlib libyaml-devel libffi-devel make bzip2 autoconf automake libtool bison subversion sqlite-devel
+
+adduser --home /opt/redmine --shell /bin/bash --comment 'Redmine Application' redmine 
+install -d -m 755 -o redmine -g redmine /opt/redmine
+sudo su - redmine
+
+
+"Ruby installation:"
+
+curl -sSL https://rvm.io/mpapis.asc | gpg2 --import -
+gpg2 --keyserver hkp://keys.gnupg.net --recv-keys 409B6B1796C275462A1703113804BB82D39DC0E3 7D2BAF1CF37B13E2069D6956105BD0E739499BDB
+or if it fails:
+
+    command curl -sSL https://rvm.io/mpapis.asc | gpg2 --import -
+    command curl -sSL https://rvm.io/pkuczynski.asc | gpg2 --import -
+
+curl -sSL https://get.rvm.io | bash -s stable --ruby
+source ~/.rvm/scripts/rvm
+rvm --default use ruby		-> install it if version issue occured: rvm install "ruby-2.5.3"
+ruby --version	--> verify ruby version
+
+"Redmine installation:"
+
+cd && svn co http://svn.redmine.org/redmine/branches/3.4-stable redmine
+mkdir -p ./redmine/tmp/pids ./redmine/public/plugin_assets
+cp ./redmine/config/configuration.yml.example ./redmine/config/configuration.yml
+cp ./redmine/config/database.yml.example ./redmine/config/database.yml
+cp -av config/additional_environment.rb.example config/additional_environment.rb
+
+vim config/additional_environment.rb
+	config.logger = Logger.new('/opt/redmine/redmine/log/logfile.log',2,1000000)
+	config.logger.level = Logger::INFO
+
+vim ./redmine/config/database.yml
+	production:
+		  adapter: mysql2
+		  database: redmine
+		  host: localhost
+		  username: redmine
+		  password: "changeme"
+		  encoding: utf8
+
+
+"Gems installation:"
+
+cd /opt/redmine/redmine/
+echo "gem 'puma'" >> Gemfile.local
+echo "gem: --no-ri --no-doc" >> ~/.gemrc
+gem install bundler
+bundle install --without development test postgresql sqlite
+gem install rmagick
+bundle install 
+bundle info rmagick
+
+
+"Prepare database:"
+rake generate_secret_token
+RAILS_ENV=production rake db:migrate
+RAILS_ENV=production REDMINE_LANG=en rake redmine:load_default_data
+
+"PUMA configuration:"
+vim ~/redmine/config/puma.rb
+	#!/usr/bin/env puma
+
+	application_path = '/opt/redmine/redmine'
+	directory application_path
+	environment 'production'
+	daemonize true
+	pidfile "#{application_path}/tmp/pids/puma.pid"
+	state_path "#{application_path}/tmp/pids/puma.state"
+	stdout_redirect "#{application_path}/log/puma.stdout.log", "#{application_path}/log/puma.stderr.log"
+	bind "tcp://0.0.0.0:9000"
+
+vim ~/redmine/config/configuration.yml
+
+	default:
+  	 email_delivery:
+	    delivery_method: :smtp                         # ==== Simple SMTP server at localhost
+	    smtp_settings:                                 #
+	      enable_starttls_auto: true                   #  email_delivery:
+	      address: "safemail.USERaddress.com"         #    delivery_method: :smtp
+	      port: 587                                    #    smtp_settings:
+	      authentication: :plain                       #      address: "localhost"
+	      domain: "safemail.USERaddress.com"          #      port: 25
+	      user_name: "username@USERaddress.com"  	   #
+	      password: "xxxxxxxxx"    
+
+"PLUGIN installation:"
+git clone -b v2-stable git://github.com/alphanodes/additionals.git plugins/additionals
+bundle install --without development test
+bundle exec rake redmine:plugins:migrate RAILS_ENV=production
+
+
+"Start PUMA"
+cd /opt/redmine/redmine/ && bundle exec puma --config config/puma.rb
+
+"To restart" 
+bundle exec pumactl -P ~/redmine/tmp/pids/puma.pid restart
+
+
+
+"Additional setup:"
+---------------------
+
+
+"Themes:"
+
+cd ~/redmine/public/themes
+wget https://github.com/Nitrino/flatly_light_redmine/archive/master.zip
+wget https://github.com/yenihayat/redmine-theme-yh/archive/master.zip
+unzip master.zip : /opt/redmine/redmine/public/themes 
+
+if using redmine-theme-yh:
+make changes in : "/opt/redmine/redmine/public/themes/redmine-theme-yh-master/stylesheets/application.css"
+
+From: 
+
+ul.projects.root {
+  column-count: 3;
+  column-gap: 1rem;
+}
+
+To:
+
+ul.projects.root {
+//  column-count: 1;
+  column-gap: 1rem;
+}
+
+From:
+
+.projects.root li {
+  padding: 1rem;
+  background: #fff;
+  border: 1px solid #e4e4e4;
+  border-radius: 3px;
+  display: inline-block;
+  margin: 0 0 1rem;
+  width: 100%;
+}
+
+TO:
+
+.projects.root li {
+  padding: 0.75rem;
+  background: #fff;
+//  border: 0.1px solid #e4e4e4;
+  border: 0.1px solid  #cccccc;
+  border-radius:  15px 50px 30px;
+  display: inline-block;
+  margin: 0 0 0.5rem;
+  width: 100%;
+}
+
+ADD:
+
+#projects-index ul.projects li.root > ul.projects {
+  border-left: 0px solid #e0e0e0;
+  padding-left: 1em; 
+}
+
+MAKE CHANGES TO:
+
+ul.projects ul {
+  margin-top: 1rem;
+ padding-left:1em;		<--- ADD
+}
+
+
+"redmine-lightbox2"
+
+cd ~/redmine/plugins/
+	git clone  git://github.com/paginagmbh/redmine_lightbox2.git ( if version > 4.0 )
+else
+	wget https://github.com/paginagmbh/redmine_lightbox2/archive/v0.4.4.zip
+	unzip v0.4.4.zip
+	mv redmine_lightbox2-0.4.4 redmine_lightbox2
+	cd public/plugin_assets/
+	cp ~/redmine/plugins/redmine_lightbox2 redmine_lightbox2
+	cd public/plugin_assets/redmine_lightbox2/
+	ln -sf  assets/javascripts javascripts
+	ln -sf  assets/stylesheets stylesheets
+	ln -sf  assets/images images 
+
+cd ~/redmine/
+rake redmine:plugins:migrate RAILS_ENV=production
+"RESTART" redmine
+
+
+"redmine-git-remote"
+
+cd ~/redmine/plugins/
+git clone git://github.com/dergachev/redmine_git_remote
+
+
+changes to be made:
+
+FROM:
+	unless system "git", "--git-dir", clone_path, "remote", "add", "--mirror=fetch", "origin",  clone_url
+
+TO:
+	unless system "git", "--git-dir", clone_path, "remote", "add", "--mirror", "origin",  clone_url
+
+"RESTART" redmine
+
+"Generate keygen"
+ssh-keygen
+ssh-copy-id  git@ipaddress
+
+"HOW-TO ADD"
+Project -> Project_Name -> Repository -> 
+SCM : GitRemote
+clone url: git@192.168.20.212:/home/git/SignalStrategyInfra
+
+
+"redmine-code-review"
+
+cd ~/redmine/plugins/
+wget https://github.com/haru/redmine_code_review/releases/download/0.9.0/redmine_code_review-0.9.0.zip
+unzip redmine_code_review-0.9.0.zip
+cd ~/redmine/
+rake redmine:plugins:migrate RAILS_ENV=production
+"RESTART" redmine
+
+"redmine-checklist"
+
+cd ~/redmine/plugins/
+git clone git://github.com/Restream/redmine_issue_checklist.git 
+cd ..
+bundle install
+bundle exec rake redmine:plugins:migrate RAILS_ENV=production
+"RESTART" redmine
+Administrator -> plugins -> configure
+Roles & Permission -> issue tracking -> update required perm.
+
+
+"redmine-work-time"
+
+cd ~/redmine/plugins
+git clone git://github.com/tkusukawa/redmine_work_time.git
+RAILS_ENV=production bundle exec rake redmine:plugins:migrate
+"RESTART REDMINE"
+
+OR
+
+"For older version:" wget https://github.com/tkusukawa/redmine_work_time/archive/0.3.2.zip
+bundle exec rake redmine:plugins:migrate RAILS_ENV=production
+"IF above command failed:"
+ bundle exec rake redmine:plugins:migrate RAILS_ENV=production NAME=redmine_work_time VERSION=009
+"RESTART" redmine
+
+
+Enable module in project setting.
+check permission on roles & permissions.
+
+
+

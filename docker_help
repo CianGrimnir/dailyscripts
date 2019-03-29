@@ -1,0 +1,23 @@
+Docker MYSQL Volume 
+
+docker run -d --volume /var/lib/mysql --name mysql_shared busybox echo Hello, busybox volume
+docker run -d --volumes-from mysql_shared --name mysqldb -e MYSQL_ROOT_PASSWORD=admin mysql
+docker run -it --rm --link mysqldb:mysqlDB --name mysqlclient  mysql mysql -u root -padmin -h mysqlDB
+OR
+docker network create mysql_nw
+docker run -d --volumes-from mysql_shared --network mysql_nw --name mysqldb -e MYSQL_ROOT_PASSWORD=admin mysql
+docker run -it --rm --network mysql_nw --name mysqlclient  mysql mysql -u root -padmin -h mysqldb
+
+
+Docker MYSQL access from HOST
+
+docker run -d --name mysqldb  -p 3306:3306 -e MYSQL_ROOT_PASSWORD=admin mysql --default-authentication-plugin=mysql_native_password
+mysql  -h localhost --protocol=TCP -P 3306  -uroot -padmin
+
+
+docker backup 
+
+docker plugin install --grant-all-permissions vieux/sshfs
+docker volume create --driver vieux/sshfs -o sshcmd=vinit@192.168.20.189:/home/vinit/TESTING_VINIT -o password=password sshvolume
+docker run -d --name sshfs_container  --mount src=sshvolume,volume-driver=vieux/sshfs,target=/app,volume-opt=sshcmd=vinit@192.168.20.189:/home/vinit/TESTING_VINIT,volume-opt=password=password nginx:latest
+docker run --rm --volumes-from sshfs_container -v $PWD:/backup ubuntu  tar cvf /backup/backup_`date +%d%m%Y`.tar /app

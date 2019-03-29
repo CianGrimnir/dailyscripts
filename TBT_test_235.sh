@@ -1,0 +1,2 @@
+#tail -100f out_LOG_FILES1_00689_00 | while read a;do echo "$a"|awk -F" " '{ if ($5 ~ /^[H|V]/) {gsub($5,"\033[1m \x1b[7;34;47m&\x1b[0m"); print}}'; done
+tail -100f out_LOG_FILES1_00689_00 | while read a;do echo "$a"|awk -F" " '{ if ($5 ~ /^[H|V|T]/) { if ($4 ~ /UnWind/) {gsub($5,"\033[1m \x1b[7;34;47m&\x1b[0m\033[0m\033[1;34m"); print} else {gsub($5,"\033[1m \x1b[7;32;47m&\x1b[0m\033[0m\033[1;32m"); print}}}'; done
